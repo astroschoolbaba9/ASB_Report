@@ -1,0 +1,14 @@
+[Unit]
+Description=Streamlit instance for ASB Reports
+After=network.target
+
+[Service]
+User=root
+Group=www-data
+WorkingDirectory=/var/www/asb-main
+Environment="PATH=/var/www/asb-main/venv/bin"
+EnvironmentFile=/var/www/asb-main/.env
+ExecStart=/var/www/asb-main/venv/bin/streamlit run streamlit_app.py --server.port 8501 --server.address 127.0.0.1
+
+[Install]
+WantedBy=multi-user.target
