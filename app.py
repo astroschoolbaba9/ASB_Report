@@ -1,14 +1,13 @@
-# app.py (Reload triggered)
+# app.py
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from main_api import router as main_router
 
 app = FastAPI(title="ASB")
 
-# ✅ CORS for Production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,7 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Include router ONCE (main_api.py already has prefix="/api")
 app.include_router(main_router)
 
 @app.get("/", tags=["Health"])

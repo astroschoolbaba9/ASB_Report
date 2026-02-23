@@ -16,11 +16,14 @@ load_dotenv()
 # ──────────────────────────────────────────────────────────────────────────────
 # Brand assets / helpers
 # ──────────────────────────────────────────────────────────────────────────────
-def _load_logo_bytes() -> Optional[bytes]:
+def _load_logo_assets():
     candidates = [
         os.getenv("ASB_LOGO_PATH"),
+        "/var/www/asb-main/assets/asb.logo.jpg",
+        "/var/www/asb-main/assets/asb_logo.jpg",
         "/mnt/data/ASB Logo.jpg",
         "ASB Logo.jpg",
+        "./assets/asb.logo.jpg",
         "./assets/asb_logo.jpg",
         "./assets/asb_logo.png",
     ]
@@ -28,11 +31,12 @@ def _load_logo_bytes() -> Optional[bytes]:
         if not p:
             continue
         try:
-            with open(p, "rb") as f:
-                return f.read()
+            if os.path.exists(p):
+                with open(p, "rb") as f:
+                    return f.read(), p
         except Exception:
             continue
-    return None
+    return None, None
 
 
 def _inject_brand_css():
@@ -201,9 +205,13 @@ div[data-baseweb="input"] > div {{
 
 
 # ✅ MUST be first Streamlit call
-st.set_page_config(page_title="ASB Numerology", layout="wide")
+_logo_bytes, _logo_path = _load_logo_assets()
+st.set_page_config(
+    page_title="ASB Numerology",
+    layout="wide",
+    page_icon=_logo_path if _logo_path else _logo_bytes
+)
 
-_logo_bytes = _load_logo_bytes()
 if _logo_bytes:
     try:
         st.logo(_logo_bytes, icon_image=_logo_bytes)
@@ -246,8 +254,8 @@ API_BASE = (_get_secret("ASB_API_BASE", "https://api.asbreports.in") or "https:/
 ALLOWED_RAW = _get_secret("ALLOWED_FEATURES", "") or ""
 ALLOWED = set(part.strip() for part in ALLOWED_RAW.split(",") if part.strip())
 
-AI_TIMEOUT_SECS = int(_get_secret("AI_TIMEOUT", "300") or "300")
-DEFAULT_TIMEOUT_SECS = 60
+AI_TIMEOUT_SECS = int(_get_secret("AI_TIMEOUT", "300"))
+DEFAULT_TIMEOUT_SECS = int(_get_secret("AI_TIMEOUT", "300"))
 
 DOB_MIN = date(1900, 1, 1)
 DOB_MAX = date.today()
@@ -307,7 +315,9 @@ def _params(**kw) -> Dict[str, Any]:
 def api_get_cached(api_base: str, path: str, params: Optional[dict], timeout: int) -> Dict[str, Any] | bytes:
     base = (api_base or "").rstrip("/")
     url = f"{base}{path}"
-    r = SESSION.get(url, params=params, timeout=timeout)
+    # Use tuple for explicit (connect, read) timeouts
+    t = (10, timeout)
+    r = SESSION.get(url, params=params, timeout=t)
     r.raise_for_status()
     ctype = r.headers.get("content-type", "")
     if "application/json" in ctype:
@@ -316,26 +326,38 @@ def api_get_cached(api_base: str, path: str, params: Optional[dict], timeout: in
 
 
 def api_get_json(path: str, params: Optional[dict] = None):
-    timeout = AI_TIMEOUT_SECS if path.startswith("/ai/") else DEFAULT_TIMEOUT_SECS
+    timeout = DEFAULT_TIMEOUT_SECS
     try:
         res = api_get_cached(API_BASE, path, params, timeout)
         if isinstance(res, dict):
             return res
-        st.error("Expected JSON but got bytes.")
+        if DEBUG_MODE:
+            st.error(f"Expected JSON but got {type(res).__name__}")
+        else:
+            st.error("⚠️ We received an unexpected response format from the server.")
     except Exception as e:
-        st.error(f"GET {path} failed: {e}")
+        if DEBUG_MODE:
+            st.error(f"GET {path} failed: {e}")
+        else:
+            st.error("⚠️ Unable to reach the server. Please check your connection or try again later.")
     return None
 
 
 def api_get_bytes(path: str, params: Optional[dict] = None) -> bytes | None:
-    timeout = AI_TIMEOUT_SECS if path.startswith("/ai/") else DEFAULT_TIMEOUT_SECS
+    timeout = DEFAULT_TIMEOUT_SECS
     try:
         res = api_get_cached(API_BASE, path, params, timeout)
         if isinstance(res, (bytes, bytearray)):
             return res
-        st.error("Expected bytes but got JSON.")
+        if DEBUG_MODE:
+            st.error(f"Expected bytes but got {type(res).__name__}")
+        else:
+            st.error("⚠️ The document could not be retrieved in the expected format.")
     except Exception as e:
-        st.error(f"GET {path} failed: {e}")
+        if DEBUG_MODE:
+            st.error(f"GET {path} failed: {e}")
+        else:
+            st.error("⚠️ Failed to download the requested file. Please try again.")
     return None
 
 
@@ -343,38 +365,54 @@ def api_post_json(path: str, payload: dict, headers: Optional[dict] = None, time
     url = f"{API_BASE}{path}"
     try:
         h = headers.copy() if headers else {}
-        r = requests.post(url, json=payload, headers=h, timeout=timeout)
+        t = (10, timeout)
+        r = requests.post(url, json=payload, headers=h, timeout=t)
 
         if r.status_code >= 400:
-            st.error(f"POST {path} failed ({r.status_code})")
-            try:
-                st.json(r.json())
-            except Exception:
-                st.write(r.text)
+            if r.status_code in {401, 403}:
+                st.error("🔐 Your session has expired. Please log in again.")
+            else:
+                if DEBUG_MODE:
+                    st.error(f"POST {path} failed ({r.status_code})")
+                    try:
+                        st.json(r.json())
+                    except:
+                        st.write(r.text)
+                else:
+                    st.error("⚠️ Request failed. Please check your input and try again.")
             return None
 
         return r.json()
     except Exception as e:
-        st.error(f"POST {path} failed: {e}")
+        if DEBUG_MODE:
+            st.error(f"POST {path} failed: {e}")
+        else:
+            st.error("⚠️ Network error. Please check your internet connection.")
         return None
 
 
 def api_get_json_with_headers(path: str, headers: dict, timeout: int = DEFAULT_TIMEOUT_SECS):
     url = f"{API_BASE}{path}"
     try:
-        r = requests.get(url, headers=headers, timeout=timeout)
+        t = (10, timeout)
+        r = requests.get(url, headers=headers, timeout=t)
 
         if r.status_code >= 400:
-            st.error(f"GET {path} failed ({r.status_code})")
-            try:
-                st.json(r.json())
-            except Exception:
-                st.write(r.text)
+            if r.status_code in {401, 403}:
+                st.error("🔐 Access denied. Please log in again.")
+            else:
+                if DEBUG_MODE:
+                    st.error(f"GET {path} failed ({r.status_code})")
+                else:
+                    st.error("⚠️ Unable to sync data with the server.")
             return None
 
         return r.json()
     except Exception as e:
-        st.error(f"GET {path} failed: {e}")
+        if DEBUG_MODE:
+            st.error(f"GET {path} failed: {e}")
+        else:
+            st.error("⚠️ Connection lost. Please refresh the page.")
         return None
 
 
@@ -421,7 +459,7 @@ def _ai_block(title: str, path: str, debug: bool = False, **params):
 
     j = api_get_json(path, clean_params)
     if not j:
-        st.warning("⚠️ AI endpoint failed or timed out. Check backend logs.")
+        st.info("ℹ️ The interpretation is taking a bit longer than usual. Please refresh the section or try again in a moment.")
         return
 
     interp = j.get("interpretation")
@@ -493,7 +531,10 @@ def _handle_sso_query_params():
         
         st.rerun()
     else:
-        st.error("SSO Login failed. The token may be expired or invalid.")
+        if DEBUG_MODE:
+            st.error("SSO Login failed. The token may be expired or invalid.")
+        else:
+            st.error("🔐 SSO Login failed. Please log in manually or try again from the marketplace.")
 
 
 
@@ -698,12 +739,12 @@ def page_auth():
         login_phone = st.text_input(
             "Phone (E.164 format)",
             key="login_phone_main",
-            placeholder="+919911500291",
-            help="Example: +919911500291",
+            placeholder="+919999999999",
+            help="Example: +919999999999",
         )
 
         if login_phone.strip() and not _is_valid_phone_e164(login_phone):
-            st.error("Phone must include country code like +919911500291 (no spaces).")
+            st.error("Phone must include country code like +919999999999 (no spaces).")
 
         phone_ok = _is_valid_phone_e164(login_phone)
 
@@ -752,11 +793,11 @@ def page_auth():
             reg_phone = st.text_input(
                 "Phone (E.164 format)",
                 key="reg_phone_main",
-                placeholder="+919911500291",
-                help="Example: +919911500291",
+                placeholder="+919999999999",
+                help="Example: +919999999999",
             )
             if reg_phone.strip() and not _is_valid_phone_e164(reg_phone):
-                st.error("Phone must include country code like +919911500291 (no spaces).")
+                st.error("Phone must include country code like +919999999999 (no spaces).")
 
         with col2:
             reg_dob = st.date_input(
@@ -814,12 +855,18 @@ def page_auth():
                             u = me.get("user") or {}
                             _set_auth(token_value, u)
                             st.session_state["reg_otp_sent"] = False
-                            st.success("Registered & logged in successfully!")
+                            st.success("🎉 Account verified & logged in successfully!")
                             st.rerun()
                         else:
-                            st.error("Registered but /api/auth/me failed.")
+                            if DEBUG_MODE:
+                                st.error("Registered but /api/auth/me failed.")
+                            else:
+                                st.error("⚠️ Log in failed after verification. Please try logging in manually.")
                     else:
-                        st.error("OTP verification failed (no token returned).")
+                        if DEBUG_MODE:
+                            st.error("OTP verification failed (no token returned).")
+                        else:
+                            st.error("❌ Invalid OTP. Please check the code and try again.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1021,7 +1068,7 @@ def page_single_person():
     st.subheader("SWOT Analysis")
     swot_json = api_get_json("/api/ai/swot.ai.json", {"dob": dob_str})
     if not swot_json:
-        st.error("Unable to generate SWOT. Please try again.")
+        # Error already handled by api_get_json
         return
 
     swot = swot_json.get("swot", {})

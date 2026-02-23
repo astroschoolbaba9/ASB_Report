@@ -682,11 +682,18 @@ def build_ai_master_report_pdf(
     _add_section(story, h2, body, "Personality Traits", single_text)
     story.append(Spacer(1, 6))
 
-    # SWOT: real AI SWOT if available, otherwise fallback text
-    if isinstance(swot_dict, dict) and swot_dict:
+    # SWOT: Use already generated single_text to derive SWOT (save one AI call)
+    derived_swot = None
+    if single_text:
+        try:
+            derived_swot = generate_swot_from_interpretation(single_text)
+        except Exception:
+            pass
+
+    if isinstance(derived_swot, dict) and derived_swot:
         story.append(Paragraph("SWOT Analysis", h2))
         for key in ("Strengths", "Weaknesses", "Opportunities", "Threats"):
-            items = swot_dict.get(key) or swot_dict.get(key.lower())
+            items = derived_swot.get(key) or derived_swot.get(key.lower())
             if isinstance(items, list) and items:
                 bullets = "\n".join(f"• {it}" for it in items)
                 # key label as subheading
