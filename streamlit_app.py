@@ -241,7 +241,7 @@ def _get_secret(name: str, default: str | None = None) -> str | None:
 # Config
 # Streamlit talks ONLY to FastAPI (8000). FastAPI proxies auth to MERN.
 # ──────────────────────────────────────────────────────────────────────────────
-API_BASE = (_get_secret("ASB_API_BASE", "http://127.0.0.1:8000") or "http://127.0.0.1:8000").rstrip("/")
+API_BASE = (_get_secret("ASB_API_BASE", "https://api.asbreports.in") or "https://api.asbreports.in").rstrip("/")
 
 ALLOWED_RAW = _get_secret("ALLOWED_FEATURES", "") or ""
 ALLOWED = set(part.strip() for part in ALLOWED_RAW.split(",") if part.strip())
