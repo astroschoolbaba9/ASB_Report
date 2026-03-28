@@ -1,0 +1,111 @@
+name: CI-CD
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests (AI mocked + gated)
+        env:
+          # ✅ Force the AI layer to the mock provider in CI
+          LLM_PROVIDER: mock
+          # ✅ Let all features run in CI so route tests don’t 403
+          #    (feature gate allows all if empty; we set explicit full list)
+          ALLOWED_FEATURES: single,relationship,yearly,monthly,daily,health,ai,diag
+          # ✅ Bypass API key middleware in CI tests (fastapi Depends)
+          SECURITY_BYPASS: "1"  # dev bypass allowed by your gate
+          API_KEY: ""           # ensure not enforced
+          # Keep timeouts short in CI
+          AI_TIMEOUT: "5"
+        run: |
+          pytest -q
+
+# ... keep the beginning of your workflow as-is ...
+
+  build-and-push:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    needs: [ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # ✅ Normalize repo name to lowercase for ALL docker refs (cache, tags, etc.)
+      - name: Compute IMAGE_ID (lowercase)
+        id: repo
+        run: |
+          IMAGE_ID=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_ID=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # docker/metadata-action also normalizes to lowercase,
+          # but we keep this explicit and consistent with IMAGE_ID
+          images: ${{ steps.repo.outputs.IMAGE_ID }}
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push (lowercase refs everywhere)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            LLM_PROVIDER=mock
+            ALLOWED_FEATURES=single,relationship,yearly,monthly,daily,health,ai,diag
+            AI_STRICT=0
+            OPENAI_MODEL=gpt-4o-mini
+          # 🔧 FIX: use lowercased cache refs
+          cache-from: type=registry,ref=${{ steps.repo.outputs.IMAGE_ID }}:buildcache
+          cache-to: type=registry,ref=${{ steps.repo.outputs.IMAGE_ID }}:buildcache,mode=max
+

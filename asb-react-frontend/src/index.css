@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&family=Cinzel:wght@400;700&family=Outfit:wght@300;400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --asb-purple: #8b5cf6;
+  --asb-magenta: #d946ef;
+  --asb-gold: #D4AF37;
+  --asb-text: #1e1b4b;
+  --asb-surface: #ffffff;
+  --asb-bg: #fdf8f4;
+  --gradient-accent: linear-gradient(90deg, #8b5cf6 0%, #d946ef 100%);
+}
+
+body {
+  @apply bg-asb-bg text-asb-text font-sans m-0 p-0 overflow-x-hidden;
+  min-height: 100vh;
+}
+
+/* Sacred Geometry Background Pattern */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* Subtle geometric pattern */
+  background-image:
+    linear-gradient(rgba(212, 175, 55, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(212, 175, 55, 0.05) 1px, transparent 1px);
+  background-size: 80px 80px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+h1,
+h2,
+h3,
+h4,
+.font-numerology {
+  font-family: 'Cinzel', serif;
+}
+
+.asb-gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-asb-gold via-asb-magenta to-asb-purple;
+}
+
+.glass {
+  @apply bg-white/70 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-purple-900/5;
+}
+
+.asb-button {
+  background: var(--gradient-accent);
+  color: white;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 20px -5px rgba(139, 92, 246, 0.3);
+}
+
+.asb-button:hover {
+  box-shadow: 0 15px 30px -5px rgba(139, 92, 246, 0.4);
+  transform: translateY(-2px);
+}
+
+.asb-button-gold {
+  @apply relative inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-white rounded-xl shadow-lg cursor-pointer transition-all duration-300;
+  background: linear-gradient(135deg, #fce08e 0%, #D4AF37 100%);
+}
+
+.asb-button:hover,
+.asb-button-gold:hover {
+  @apply transform -translate-y-1 shadow-2xl brightness-110 opacity-90;
+}
+
+.asb-card {
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+  background: white;
+}
+
+.asb-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px -20px rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
+/* Badge for "SOON" items */
+.badge-soon {
+  font-size: 8px;
+  font-weight: 900;
+  padding: 1px 4px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  margin-left: 4px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+.mystic-border {
+  @apply border border-asb-gold border-opacity-30 relative;
+}
+
+.mystic-border::after {
+  content: "";
+  @apply absolute -inset-0.5 bg-gradient-to-r from-asb-gold to-asb-magenta opacity-0 blur transition-all duration-500 rounded-2xl pointer-events-none;
+}
+
+.mystic-border:hover::after {
+  @apply opacity-20;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-asb-bg;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-asb-gold bg-opacity-40 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-asb-gold;
+}
+
+/* Floating Animation */
+@keyframes cosmic-float {
+
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+
+  50% {
+    transform: translateY(-15px) rotate(2deg);
+  }
+}
+
+.cosmic-float {
+  animation: cosmic-float 6s ease-in-out infinite;
+}
+
+/* Number Glow Effect */
+.number-glow {
+  text-shadow: 0 0 10px rgba(230, 200, 122, 0.4);
+}
