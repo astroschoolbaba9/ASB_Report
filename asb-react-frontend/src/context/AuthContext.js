@@ -10,7 +10,11 @@ export const AuthProvider = ({ children }) => {
     const [token, setToken] = useState(localStorage.getItem('token'));
     const [loading, setLoading] = useState(true);
 
-    const API_BASE = process.env.REACT_APP_API_BASE || `http://${window.location.hostname}:8001`;
+    const API_BASE = process.env.REACT_APP_API_BASE || (
+        window.location.hostname.includes('asbreports.in')
+            ? 'https://api.asbreports.in'
+            : `http://${window.location.hostname}:8001`
+    );
 
     const handleSSO = React.useCallback(async (ssoToken) => {
         setLoading(true);
