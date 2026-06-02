@@ -5,10 +5,18 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 
 const Home = () => {
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     const navigate = useNavigate();
     const [name, setName] = useState('');
     const [dob, setDob] = useState('');
+
+    const getSubdomainUrl = (subdomain, devPort) => {
+        const tokenParam = token ? `?token=${token}` : '';
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return `http://${window.location.hostname}:${devPort}${tokenParam}`;
+        }
+        return `https://${subdomain}.asbreports.in${tokenParam}`;
+    };
 
     const handleCalculate = (e) => {
         e.preventDefault();
@@ -41,13 +49,15 @@ const Home = () => {
             title: 'Mobile Numerology',
             desc: 'Discover how your phone number influences your energy and success.',
             icon: <Clock className="w-8 h-8 text-asb-purple" />,
-            link: '/mobile-numerology'
+            link: getSubdomainUrl('mobile', '3000'),
+            isExternal: true
         },
         {
             title: 'Name Numerology',
             desc: 'Analyze the vibration of your name and its impact on your destiny.',
             icon: <User className="w-8 h-8 text-asb-purple" />,
-            link: '/name-numerology'
+            link: getSubdomainUrl('name', '3002'),
+            isExternal: true
         },
         {
             title: 'Tarot Card',
@@ -149,15 +159,27 @@ const Home = () => {
                             viewport={{ once: true }}
                             transition={{ duration: 0.5, delay: idx * 0.1 }}
                         >
-                            <Link to={card.link} className="asb-card block h-full group p-10 bg-white border border-asb-purple/5">
-                                <div className="mb-8 p-5 rounded-2xl bg-asb-purple/5 group-hover:bg-asb-purple transition-all duration-300 w-fit">
-                                    <div className="group-hover:text-white transition-colors">
-                                        {card.icon}
+                            {card.isExternal ? (
+                                <a href={card.link} className="asb-card block h-full group p-10 bg-white border border-asb-purple/5">
+                                    <div className="mb-8 p-5 rounded-2xl bg-asb-purple/5 group-hover:bg-asb-purple transition-all duration-300 w-fit">
+                                        <div className="group-hover:text-white transition-colors">
+                                            {card.icon}
+                                        </div>
                                     </div>
-                                </div>
-                                <h3 className="text-xl font-bold mb-4 text-asb-text font-numerology uppercase tracking-tight">{card.title}</h3>
-                                <p className="text-asb-text-muted leading-relaxed text-sm font-medium">{card.desc}</p>
-                            </Link>
+                                    <h3 className="text-xl font-bold mb-4 text-asb-text font-numerology uppercase tracking-tight">{card.title}</h3>
+                                    <p className="text-asb-text-muted leading-relaxed text-sm font-medium">{card.desc}</p>
+                                </a>
+                            ) : (
+                                <Link to={card.link} className="asb-card block h-full group p-10 bg-white border border-asb-purple/5">
+                                    <div className="mb-8 p-5 rounded-2xl bg-asb-purple/5 group-hover:bg-asb-purple transition-all duration-300 w-fit">
+                                        <div className="group-hover:text-white transition-colors">
+                                            {card.icon}
+                                        </div>
+                                    </div>
+                                    <h3 className="text-xl font-bold mb-4 text-asb-text font-numerology uppercase tracking-tight">{card.title}</h3>
+                                    <p className="text-asb-text-muted leading-relaxed text-sm font-medium">{card.desc}</p>
+                                </Link>
+                            )}
                         </motion.div>
                     ))}
                 </div>

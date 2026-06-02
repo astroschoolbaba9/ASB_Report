@@ -25,7 +25,7 @@ const Login = () => {
             });
             if (response.data.success) {
                 login(token, response.data.user);
-                checkRedirect(response.data.user);
+                checkRedirect(token, response.data.user);
             } else {
                 setError('SSO Login failed. Invalid token.');
             }
@@ -44,9 +44,22 @@ const Login = () => {
         }
     }, [location, handleSSO]);
 
-    const checkRedirect = (userObj) => {
+    const checkRedirect = (tokenVal, userObj) => {
+        const params = new URLSearchParams(location.search);
+        const redirectUrl = params.get('redirect');
+
+        if (redirectUrl) {
+            try {
+                const url = new URL(redirectUrl);
+                url.searchParams.set('token', tokenVal);
+                window.location.href = url.toString();
+                return;
+            } catch (e) {
+                console.error("Invalid redirect URL:", e);
+            }
+        }
+
         const from = location.state?.from?.pathname || '/dashboard';
-        // Logic moved to ProfileRequiredRoute guard for consistency
         navigate(from);
     };
 
@@ -99,7 +112,7 @@ const Login = () => {
                 });
                 if (me.data.success) {
                     login(token, me.data.user);
-                    checkRedirect(me.data.user);
+                    checkRedirect(token, me.data.user);
                 }
             } else {
                 setError('Verification failed. No token returned.');

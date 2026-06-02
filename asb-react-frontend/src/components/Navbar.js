@@ -6,7 +6,7 @@ import { Menu, X, User, LogOut, LayoutDashboard, PhoneCall, History, Phone, Book
 import asb_logo from '../assets/asb_logo.jpg';
 
 const Navbar = () => {
-    const { user, logout } = useAuth();
+    const { user, token, logout } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const location = useLocation();
@@ -22,10 +22,18 @@ const Navbar = () => {
         setIsOpen(false);
     }, [location]);
 
+    const getSubdomainUrl = (subdomain, devPort) => {
+        const tokenParam = token ? `?token=${token}` : '';
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return `http://${window.location.hostname}:${devPort}${tokenParam}`;
+        }
+        return `https://${subdomain}.asbreports.in${tokenParam}`;
+    };
+
     const navLinks = [
         { name: 'Number Numerology', path: '/', icon: <History size={18} /> },
-        { name: 'Mobile Numerology', path: '/mobile-numerology', icon: <Phone size={18} />, soon: true },
-        { name: 'Name Numerology', path: '/name-numerology', icon: <User size={18} />, soon: true },
+        { name: 'Mobile Numerology', path: getSubdomainUrl('mobile', '3000'), isExternal: true, icon: <Phone size={18} /> },
+        { name: 'Name Numerology', path: getSubdomainUrl('name', '3002'), isExternal: true, icon: <User size={18} /> },
         { name: 'Tarot Card', path: '/tarot', icon: <BookOpen size={18} />, soon: true },
         { name: 'Consult', path: '/consult', icon: <PhoneCall size={18} /> },
     ];
@@ -56,18 +64,29 @@ const Navbar = () => {
                 {/* Desktop Navigation */}
                 <div className="hidden lg:flex items-center space-x-6">
                     {[...navLinks, ...authLinks].map((link) => (
-                        <Link
-                            key={link.path}
-                            to={link.path}
-                            className={`text-[12px] font-bold transition-all duration-300 flex items-center gap-1.5 ${isActive(link.path)
-                                ? 'text-asb-purple'
-                                : 'text-asb-text-muted hover:text-asb-purple'
-                                }`}
-                        >
-                            <span className="whitespace-nowrap">{link.name}</span>
-                            {link.soon && <span className="badge-soon">SOON</span>}
-                            {isActive(link.path) && <span className="w-1 h-1 rounded-full bg-asb-purple"></span>}
-                        </Link>
+                        link.isExternal ? (
+                            <a
+                                key={link.path}
+                                href={link.path}
+                                className="text-[12px] font-bold transition-all duration-300 flex items-center gap-1.5 text-asb-text-muted hover:text-asb-purple"
+                            >
+                                <span className="whitespace-nowrap">{link.name}</span>
+                                {link.soon && <span className="badge-soon">SOON</span>}
+                            </a>
+                        ) : (
+                            <Link
+                                key={link.path}
+                                to={link.path}
+                                className={`text-[12px] font-bold transition-all duration-300 flex items-center gap-1.5 ${isActive(link.path)
+                                    ? 'text-asb-purple'
+                                    : 'text-asb-text-muted hover:text-asb-purple'
+                                    }`}
+                            >
+                                <span className="whitespace-nowrap">{link.name}</span>
+                                {link.soon && <span className="badge-soon">SOON</span>}
+                                {isActive(link.path) && <span className="w-1 h-1 rounded-full bg-asb-purple"></span>}
+                            </Link>
+                        )
                     ))}
 
                     <a
@@ -111,17 +130,30 @@ const Navbar = () => {
                 }`}>
                 <div className="bg-white px-6 py-10 flex flex-col gap-6 shadow-2xl border-t border-asb-purple/5">
                     {[...navLinks, ...authLinks].map((link) => (
-                        <Link
-                            key={link.path}
-                            to={link.path}
-                            className={`flex items-center gap-4 text-sm font-bold uppercase tracking-widest ${isActive(link.path) ? 'text-asb-purple' : 'text-asb-text'
-                                }`}
-                        >
-                            <div className={`p-2.5 rounded-xl ${isActive(link.path) ? 'bg-asb-purple text-white' : 'bg-asb-purple/5 text-asb-purple'}`}>
-                                {link.icon}
-                            </div>
-                            {link.name}
-                        </Link>
+                        link.isExternal ? (
+                            <a
+                                key={link.path}
+                                href={link.path}
+                                className="flex items-center gap-4 text-sm font-bold uppercase tracking-widest text-asb-text"
+                            >
+                                <div className="p-2.5 rounded-xl bg-asb-purple/5 text-asb-purple">
+                                    {link.icon}
+                                </div>
+                                {link.name}
+                            </a>
+                        ) : (
+                            <Link
+                                key={link.path}
+                                to={link.path}
+                                className={`flex items-center gap-4 text-sm font-bold uppercase tracking-widest ${isActive(link.path) ? 'text-asb-purple' : 'text-asb-text'
+                                    }`}
+                            >
+                                <div className={`p-2.5 rounded-xl ${isActive(link.path) ? 'bg-asb-purple text-white' : 'bg-asb-purple/5 text-asb-purple'}`}>
+                                    {link.icon}
+                                </div>
+                                {link.name}
+                            </Link>
+                        )
                     ))}
 
                     {user ? (

@@ -1402,7 +1402,115 @@ def _ollama_generate(grounding: str, facts: Dict[str, Any], mode: str = "person"
     return json.loads(data)
 
 
+def _gemini_generate(grounding: str, facts: Dict[str, Any], mode: str = "person") -> Dict[str, Any]:
+    """
+    Ask Gemini (Google Generative AI) using the OpenAI compatibility layer.
+    """
+    from openai import OpenAI
+    import json
 
+    gemini_key = (settings.gemini_api_key.get_secret_value()
+                  if hasattr(settings.gemini_api_key, "get_secret_value") and settings.gemini_api_key
+                  else settings.gemini_api_key)
+
+    if not gemini_key:
+        raise ValueError("GEMINI_API_KEY is not set in settings or environment")
+
+    # Use Google's OpenAI compatibility endpoint
+    client = OpenAI(
+        api_key=gemini_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
+
+    system = _system_for_mode(mode)
+    lengths = {
+        "person": "300–400 words",
+        "relationship": "300–400 words",
+        "yearly": "300–400 words",
+        "monthly": "200–300 words",
+        "daily": "180–250 words",
+        "health": "300–400 words",
+        "health_daily": "180–250 words",
+        "health_monthly": "200–300 words",
+        "health_yearly": "300–400 words",
+        "profession": "130–190 words",
+    }
+    target = lengths.get(mode, "300–400 words")
+
+    user_msg = (
+        "Grounding (meanings, traits):\n"
+        f"{grounding}\n\n"
+        "Facts (DOB and computed values):\n"
+        f"{facts}\n\n"
+        "Write ONE friendly paragraph in everyday human language (no theory or jargon). "
+        "Do not mention letters, codes, triangle layers, or numbers. "
+        f"Keep it ~{target}. "
+        "Return JSON with a single key 'interpretation'."
+    )
+
+    resp = client.chat.completions.create(
+        model=settings.gemini_model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_msg},
+        ],
+        temperature=0.3,
+        response_format={"type": "json_object"},
+        timeout=settings.timeout_seconds,
+    )
+    text = resp.choices[0].message.content
+    return json.loads(text)
+
+
+def _generate_with_fallback(grounding: str, facts: Dict[str, Any], mode: str, mock_func) -> Dict[str, Any]:
+    provider = (settings.llm_provider or "").lower()
+    
+    if provider == "openai" and settings.openai_api_key:
+        try:
+            raw = _openai_generate(grounding, facts, mode=mode)
+            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
+            return raw
+        except Exception as e:
+            logger.warning("OpenAI generation failed: %s. Trying Gemini fallback...", e)
+            if settings.gemini_api_key:
+                try:
+                    raw = _gemini_generate(grounding, facts, mode=mode)
+                    _LAST_USED.update({"provider": "gemini", "model": settings.gemini_model})
+                    return raw
+                except Exception as ex:
+                    logger.error("Gemini fallback failed: %s", ex)
+            # Fall back to mock if everything fails
+            logger.warning("All LLM providers failed. Using mock fallback.")
+            raw = mock_func(grounding, facts)
+            _LAST_USED.update({"provider": "mock", "model": None})
+            return raw
+            
+    elif provider == "gemini" and settings.gemini_api_key:
+        try:
+            raw = _gemini_generate(grounding, facts, mode=mode)
+            _LAST_USED.update({"provider": "gemini", "model": settings.gemini_model})
+            return raw
+        except Exception as e:
+            logger.error("Gemini generation failed: %s. Using mock fallback.", e)
+            raw = mock_func(grounding, facts)
+            _LAST_USED.update({"provider": "mock", "model": None})
+            return raw
+            
+    elif provider == "ollama":
+        try:
+            raw = _ollama_generate(grounding, facts, mode=mode)
+            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
+            return raw
+        except Exception as e:
+            logger.error("Ollama generation failed: %s. Using mock fallback.", e)
+            raw = mock_func(grounding, facts)
+            _LAST_USED.update({"provider": "mock", "model": None})
+            return raw
+            
+    else:
+        raw = mock_func(grounding, facts)
+        _LAST_USED.update({"provider": "mock", "model": None})
+        return raw
 
 
 # ---------------------------- entry point ----------------------------
@@ -1417,31 +1525,15 @@ def generate_interpretation(dob: str) -> AIInterpretation:
         facts=facts,
     )
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="person")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-            logger.info("AI provider used: openai, model=%s", settings.openai_model)
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="person")
-            _LAST_USED.update({"provider": "ollama", "model": "llama3"})
-            logger.info("AI provider used: ollama, model=llama3")
-        else:
-            raw = _mock_generate(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            logger.info("AI provider used: mock")
-            return AIInterpretation(**raw)
+        raw = _generate_with_fallback(grounding, facts, "person", _mock_generate)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "person")
         if not _validates(clean, facts, "person"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
-    except (ValidationError, Exception):
-        logger.exception("Provider '%s' failed; falling back to mock.", provider or "mock")
+    except Exception:
+        logger.exception("Person AI generation failed; using mock fallback.")
         raw = _mock_generate(grounding, facts)
         _LAST_USED.update({"provider": "mock", "model": None})
         return AIInterpretation(**raw)
@@ -1462,29 +1554,15 @@ def generate_relationship_interpretation(dob_left: str, dob_right: str) -> AIInt
         facts=facts,
     )
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="relationship")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="relationship")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_relationship(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
+        raw = _generate_with_fallback(grounding, facts, "relationship", _mock_generate_relationship)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "relationship")
         if not _validates(clean, facts, "relationship"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
-
     except Exception:
-        logger.exception("Validation failed; using mock fallback.")
+        logger.exception("Relationship AI generation failed; using mock fallback.")
         raw = _mock_generate_relationship(grounding, facts)
         _LAST_USED.update({"provider": "mock", "model": None})
         return AIInterpretation(**raw)
@@ -1504,27 +1582,13 @@ def generate_yearly_interpretation(dob: str, year: int) -> AIInterpretation:
         facts=facts,
     )
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="yearly")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="yearly")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_yearly(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
-        
+        raw = _generate_with_fallback(grounding, facts, "yearly", _mock_generate_yearly)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "yearly")
         if not _validates(clean, facts, "yearly"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
     except Exception:
         logger.exception("Yearly AI generation failed; using mock fallback.")
         raw = _mock_generate_yearly(grounding, facts)
@@ -1546,27 +1610,13 @@ def generate_monthly_interpretation(dob: str, year: int, month: int) -> AIInterp
         facts=facts,
     )
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="monthly")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="monthly")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_monthly(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
-        
+        raw = _generate_with_fallback(grounding, facts, "monthly", _mock_generate_monthly)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "monthly")
         if not _validates(clean, facts, "monthly"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
     except Exception:
         logger.exception("Monthly AI generation failed; using mock fallback.")
         raw = _mock_generate_monthly(grounding, facts)
@@ -1589,27 +1639,13 @@ def generate_daily_interpretation(dob: str, day: Optional[str] = None) -> AIInte
         facts=facts,
     )
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="daily")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="daily")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_daily(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
-        
+        raw = _generate_with_fallback(grounding, facts, "daily", _mock_generate_daily)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "daily")
         if not _validates(clean, facts, "daily"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
     except Exception:
         logger.exception("Daily AI generation failed; using mock fallback.")
         raw = _mock_generate_daily(grounding, facts)
@@ -1628,29 +1664,15 @@ def generate_health_interpretation(dob: str, gender: Optional[str] = None) -> AI
     facts = _summarize_health_report(report)
     grounding = _compose_grounding_for("health", used_digits=facts.get("_used_digits"),facts=facts,)
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="health")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="health")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_health(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
-
+        raw = _generate_with_fallback(grounding, facts, "health", _mock_generate_health)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "health")
         if not _validates(clean, facts, "health"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
     except Exception:
-        logger.exception("Provider '%s' failed; falling back to mock.", provider or "mock")
+        logger.exception("Health AI generation failed; using mock fallback.")
         raw = _mock_generate_health(grounding, facts)
         _LAST_USED.update({"provider": "mock", "model": None})
         return AIInterpretation(**raw)
@@ -1665,27 +1687,13 @@ def generate_health_daily_interpretation(dob: str, day: Optional[str] = None, ge
     facts = _summarize_health_report(report)
     grounding = _compose_grounding_for("health", used_digits=facts.get("_used_digits"),facts=facts,)
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="health_daily")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="health_daily")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_health(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
-
+        raw = _generate_with_fallback(grounding, facts, "health_daily", _mock_generate_health)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "health_daily")
         if not _validates(clean, facts, "health_daily"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
     except Exception:
         logger.exception("Daily Health AI generation failed; using mock fallback.")
         raw = _mock_generate_health(grounding, facts)
@@ -1703,27 +1711,13 @@ def generate_health_monthly_interpretation(dob: str, year: int, gender: Optional
     facts = _summarize_health_report(report)
     grounding = _compose_grounding_for("health", used_digits=facts.get("_used_digits"),facts=facts,)
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="health_monthly")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="health_monthly")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_health(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
-
+        raw = _generate_with_fallback(grounding, facts, "health_monthly", _mock_generate_health)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "health_monthly")
         if not _validates(clean, facts, "health_monthly"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
     except Exception:
         logger.exception("Monthly Health AI generation failed; using mock fallback.")
         raw = _mock_generate_health(grounding, facts)
@@ -1740,27 +1734,13 @@ def generate_health_yearly_interpretation(dob: str, year: int, gender: Optional[
     facts = _summarize_health_report(report)
     grounding = _compose_grounding_for("health", used_digits=facts.get("_used_digits"),facts=facts,)
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="health_yearly")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="health_yearly")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_health(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
-
+        raw = _generate_with_fallback(grounding, facts, "health_yearly", _mock_generate_health)
         cand = AIInterpretation(**raw)
         clean = _finalize(cand.interpretation, facts, "health_yearly")
         if not _validates(clean, facts, "health_yearly"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
     except Exception:
         logger.exception("Yearly Health AI generation failed; using mock fallback.")
         raw = _mock_generate_health(grounding, facts)
@@ -1781,28 +1761,14 @@ def generate_profession_interpretation(dob: str) -> AIInterpretation:
         facts=facts,
     )
 
-    provider = (settings.llm_provider or "").lower()
-    logger.info("AI provider configured: %s", provider or "mock")
-
     try:
-        if provider == "openai" and settings.openai_api_key:
-            raw = _openai_generate(grounding, facts, mode="profession")
-            _LAST_USED.update({"provider": "openai", "model": settings.openai_model})
-        elif provider == "ollama":
-            raw = _ollama_generate(grounding, facts, mode="profession")
-            _LAST_USED.update({"provider": "ollama", "model": settings.ollama_model})
-        else:
-            raw = _mock_generate_profession(grounding, facts)
-            _LAST_USED.update({"provider": "mock", "model": None})
-            return AIInterpretation(**raw)
-
+        raw = _generate_with_fallback(grounding, facts, "profession", _mock_generate_profession)
         cand = AIInterpretation(**raw)
         # Treat profession similar to person for clipping/validation
         clean = _finalize(cand.interpretation, facts, "profession")
         if not _validates(clean, facts, "profession"):
             raise ValueError("AI narrative failed validation; falling back to mock.")
         return AIInterpretation(interpretation=clean)
-
     except Exception:
         logger.exception("Profession AI generation failed; using mock fallback.")
         raw = _mock_generate_profession(grounding, facts)
