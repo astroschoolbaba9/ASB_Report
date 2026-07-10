@@ -46,7 +46,11 @@ const Chatbot = () => {
 
         if (savedHistory) {
             try {
-                setMessages(JSON.parse(savedHistory));
+                const parsed = JSON.parse(savedHistory);
+                setMessages(parsed.map(msg => ({
+                    ...msg,
+                    text: msg.text || ''
+                })));
             } catch (e) {
                 console.error(e);
             }
