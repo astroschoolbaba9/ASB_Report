@@ -26,16 +26,17 @@ const Home = () => {
             return;
         }
 
-        // Store pending data for guest users
+        // Always store the input so complete-profile can auto-sync
+        localStorage.setItem('pending_name', name);
+        localStorage.setItem('pending_dob', dob);
+
         if (!user) {
-            localStorage.setItem('pending_name', name);
-            localStorage.setItem('pending_dob', dob);
             navigate('/login');
             return;
         }
 
-        // If logged in, go to dashboard (ProfileRequiredRoute will handle the rest)
-        navigate('/dashboard');
+        // If logged in, redirect to complete-profile to sync the new details
+        navigate('/complete-profile');
     };
 
     const cards = [

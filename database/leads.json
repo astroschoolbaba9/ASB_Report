@@ -1,0 +1,11 @@
+[
+    {
+        "timestamp": "2026-07-10T09:15:55.122311Z",
+        "name": "bhaskar",
+        "dob": "2002-04-11",
+        "gender": "Male",
+        "category": "🎓 Education",
+        "selected_question": "🎯 Best Career Stream",
+        "intent": "guided_numerology"
+    }
+]

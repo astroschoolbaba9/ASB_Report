@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import Chatbot from './components/Chatbot';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -54,8 +55,10 @@ const ProfileRequiredRoute = ({ children }) => {
   // Mandatory profile check - block missing or default SSO dummy values
   const isDummyName = !user.name || user.name === "User" || user.name.toLowerCase().includes("dummy");
   const isDummyDob = !user.dob || user.dob === "01-01-1970";
+  const pendingName = localStorage.getItem('pending_name');
+  const pendingDob = localStorage.getItem('pending_dob');
 
-  if (isDummyName || isDummyDob) {
+  if (isDummyName || isDummyDob || (pendingName && pendingDob)) {
     return <Navigate to="/complete-profile" />;
   }
 
@@ -97,6 +100,8 @@ const AppContent = () => {
           <Route path="*" element={<Navigate to="/404" replace />} />
         </Routes>
       </main>
+
+      <Chatbot />
 
       <footer className="bg-white py-24 border-t border-asb-purple/5">
         <div className="container mx-auto px-6">
