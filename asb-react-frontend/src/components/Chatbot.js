@@ -348,7 +348,7 @@ const Chatbot = () => {
                                                 : 'bg-white border border-asb-purple/5 text-asb-text rounded-tl-none'
                                         }`}
                                         dangerouslySetInnerHTML={{
-                                            __html: msg.text.replace(/\n/g, '<br/>')
+                                            __html: (msg.text || '').replace(/\n/g, '<br/>')
                                         }}
                                     ></div>
 
