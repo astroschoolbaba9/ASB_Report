@@ -50,7 +50,7 @@ const Home = () => {
             title: 'Mobile Numerology',
             desc: 'Discover how your phone number influences your energy and success.',
             icon: <Clock className="w-8 h-8 text-asb-purple" />,
-            link: getSubdomainUrl('mobile', '3000'),
+            link: getSubdomainUrl('mobile', '3003'),
             isExternal: true
         },
         {
