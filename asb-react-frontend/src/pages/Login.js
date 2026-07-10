@@ -176,12 +176,13 @@ const Login = () => {
                             className="space-y-6"
                         >
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-asb-text-muted uppercase tracking-widest ml-1">Mobile Number</label>
+                                <label htmlFor="mobile-input" className="text-[10px] font-bold text-asb-text-muted uppercase tracking-widest ml-1">Mobile Number</label>
                                 <div className="relative group">
                                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-asb-text-muted group-focus-within:text-asb-purple transition-colors">
                                         <Phone className="h-5 w-5" />
                                     </div>
                                     <input
+                                        id="mobile-input"
                                         type="tel"
                                         required
                                         placeholder="+91 00000 00000"
@@ -216,9 +217,10 @@ const Login = () => {
                             className="space-y-6"
                         >
                             <div className="space-y-2 text-center">
-                                <label className="text-[10px] font-bold text-asb-text-muted uppercase tracking-widest">Verify Access Code</label>
+                                <label htmlFor="otp-input" className="text-[10px] font-bold text-asb-text-muted uppercase tracking-widest">Verify Access Code</label>
                                 <div className="relative group mt-4">
                                     <input
+                                        id="otp-input"
                                         type="text"
                                         required
                                         maxLength="6"

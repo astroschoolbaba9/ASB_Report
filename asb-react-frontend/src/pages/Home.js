@@ -97,8 +97,9 @@ const Home = () => {
                         <div className="relative bg-white p-8 md:p-12 rounded-[2.5rem] border border-asb-purple/5 shadow-2xl shadow-purple-900/5 overflow-hidden">
                             <form onSubmit={handleCalculate} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end relative z-10 text-left">
                                 <div className="md:col-span-4 space-y-3">
-                                    <label className="text-[10px] font-bold text-asb-text-muted uppercase tracking-widest ml-1">Your Full Name</label>
+                                    <label htmlFor="full-name" className="text-[10px] font-bold text-asb-text-muted uppercase tracking-widest ml-1">Your Full Name</label>
                                     <input
+                                        id="full-name"
                                         type="text"
                                         placeholder="E.g. John Doe"
                                         value={name}
@@ -108,8 +109,9 @@ const Home = () => {
                                     />
                                 </div>
                                 <div className="md:col-span-4 space-y-3">
-                                    <label className="text-[10px] font-bold text-asb-text-muted uppercase tracking-widest ml-1">Date of Birth</label>
+                                    <label htmlFor="dob-input" className="text-[10px] font-bold text-asb-text-muted uppercase tracking-widest ml-1">Date of Birth</label>
                                     <input
+                                        id="dob-input"
                                         type="date"
                                         value={dob}
                                         placeholder="dd-mm-yyyy"
